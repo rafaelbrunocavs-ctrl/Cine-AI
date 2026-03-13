@@ -434,6 +434,25 @@ const TMDB_IMG = 'https://image.tmdb.org/t/p/';
 const TMDB_API = 'https://api.themoviedb.org/3';
 let tmdbKey = localStorage.getItem('cineai_tmdb') || '';
 let traktConnected = localStorage.getItem('cineai_trakt') === 'true';
+let traktToken     = localStorage.getItem('cineai_trakt_token') || '';
+let traktUsername  = localStorage.getItem('cineai_trakt_user')  || '';
+
+// Handle OAuth return (token arrives in URL hash)
+(function handleOAuthReturn() {
+  const hash = window.location.hash;
+  if (!hash.includes('trakt_token=')) return;
+  const params = new URLSearchParams(hash.slice(1));
+  const token = params.get('trakt_token');
+  if (!token) return;
+  traktToken = token;
+  traktConnected = true;
+  localStorage.setItem('cineai_trakt_token',  token);
+  localStorage.setItem('cineai_trakt_refresh', params.get('trakt_refresh') || '');
+  localStorage.setItem('cineai_trakt_expires', params.get('trakt_expires') || '');
+  localStorage.setItem('cineai_trakt', 'true');
+  history.replaceState(null, '', window.location.pathname);
+  setTimeout(fetchTraktProfile, 1000);
+})();
 let watchlist = JSON.parse(localStorage.getItem('cineai_watchlist') || '[]');
 let diary = JSON.parse(localStorage.getItem('cineai_diary') || '[]');
 let activeGenre = 'Todos';
@@ -565,7 +584,7 @@ async function loadAIRecs() {
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,
         system:'Especialista em cinema. Responda SOMENTE JSON sem markdown.\n{"recommendations":[{"title":"string","year":number,"genre":"string","score":number,"emoji":"string","aiReason":"1 frase em português","director":"string"}]}',
-        messages:[{role:'user',content:`Assistidos: ${watched}. Watchlist: ${wl}. Gênero: ${activeGenre}. Trakt: ${traktConnected}. Sugira 6 filmes variados.`}]})
+        messages:[{role:'user',content:`Assistidos no app: ${watched}. Watchlist: ${wl}. Histórico Trakt (reais): ${getTraktWatched().join(', ')||'nenhum'}. Gênero: ${activeGenre}. Trakt conectado: ${traktConnected}. Sugira 6 filmes personalizados e variados.`}]})
     });
     const d = await res.json();
     const p = JSON.parse(d.content[0].text.replace(/```json|```/g,'').trim());
@@ -1109,18 +1128,95 @@ function updateStats(){
 }
 
 // ═══════════════════════════════════════
-// TRAKT
+// TRAKT OAUTH
 // ═══════════════════════════════════════
-function showTraktConnect(){document.getElementById('trakt-modal').classList.add('open');document.body.style.overflow='hidden';}
-function connectTrakt(){
-  traktConnected=true;localStorage.setItem('cineai_trakt','true');
-  closeModal('trakt-modal');updateTraktUI();showToast('📡 Trakt.tv conectado!');loadAIRecs();
+function showTraktConnect(){
+  // If already connected, show disconnect option
+  const btn = document.querySelector('#trakt-modal .btn-gold');
+  if (traktConnected && btn) {
+    btn.textContent = `✓ Conectado como @${traktUsername}`;
+    btn.style.cssText = 'width:100%;justify-content:center;padding:14px;background:var(--green);color:#080810';
+    const disc = document.getElementById('trakt-disconnect-btn');
+    if (disc) disc.style.display = 'block';
+  }
+  document.getElementById('trakt-modal').classList.add('open');
+  document.body.style.overflow='hidden';
 }
+
+function connectTrakt(){
+  closeModal('trakt-modal');
+  showToast('📡 Redirecionando para Trakt.tv...');
+  setTimeout(() => { window.location.href = '/api/trakt-auth'; }, 500);
+}
+
+function disconnectTrakt(){
+  ['cineai_trakt','cineai_trakt_token','cineai_trakt_refresh','cineai_trakt_user','cineai_trakt_watched']
+    .forEach(k => localStorage.removeItem(k));
+  traktToken = ''; traktUsername = ''; traktConnected = false;
+  closeModal('trakt-modal');
+  updateTraktUI();
+  showToast('Trakt desconectado');
+}
+
+async function fetchTraktProfile() {
+  if (!traktToken) return;
+  try {
+    const res = await fetch('/api/trakt-proxy?path=users/me', {
+      headers: { 'Authorization': `Bearer ${traktToken}` }
+    });
+    if (!res.ok) { handleTraktExpired(); return; }
+    const user = await res.json();
+    traktUsername = user.username || user.name || 'usuário';
+    localStorage.setItem('cineai_trakt_user', traktUsername);
+    updateTraktUI();
+    showToast(`📡 Trakt conectado como @${traktUsername}!`);
+    await loadTraktHistory();
+    loadAIRecs();
+  } catch(e) { console.error('Trakt profile error', e); }
+}
+
+async function loadTraktHistory() {
+  if (!traktToken) return;
+  try {
+    const res = await fetch('/api/trakt-proxy?path=users/me/watched/movies?limit=30', {
+      headers: { 'Authorization': `Bearer ${traktToken}` }
+    });
+    if (!res.ok) return;
+    const watched = await res.json();
+    const titles = watched.map(w => w.movie?.title).filter(Boolean);
+    localStorage.setItem('cineai_trakt_watched', JSON.stringify(titles));
+    // Update stats
+    document.getElementById('s-watched').textContent = diary.length + titles.length;
+  } catch {}
+}
+
+function getTraktWatched() {
+  try { return JSON.parse(localStorage.getItem('cineai_trakt_watched') || '[]'); } catch { return []; }
+}
+
+function handleTraktExpired() {
+  ['cineai_trakt','cineai_trakt_token','cineai_trakt_refresh','cineai_trakt_user','cineai_trakt_watched']
+    .forEach(k => localStorage.removeItem(k));
+  traktToken = ''; traktUsername = ''; traktConnected = false;
+  updateTraktUI();
+  showToast('⚠️ Sessão Trakt expirada — reconecte');
+}
+
 function updateTraktUI(){
-  if(traktConnected){
-    document.getElementById('trakt-banner').style.display='none';
-    document.getElementById('trakt-status').textContent='@usuario · conectado';
-    document.getElementById('profile-handle').textContent='@usuario · Trakt.tv';
+  const banner = document.getElementById('trakt-banner');
+  const status = document.getElementById('trakt-status');
+  const handle = document.getElementById('profile-handle');
+  const nameEl = document.getElementById('profile-name');
+  if (traktConnected) {
+    if (banner) banner.style.display='none';
+    const label = traktUsername ? `@${traktUsername} · conectado` : 'conectado · carregando...';
+    if (status) status.textContent = label;
+    if (handle) handle.textContent = traktUsername ? `@${traktUsername} · Trakt.tv` : 'Trakt.tv · conectado';
+    if (nameEl && traktUsername) nameEl.textContent = traktUsername;
+  } else {
+    if (banner) banner.style.display='flex';
+    if (status) status.textContent = 'Não conectado';
+    if (handle) handle.textContent = 'Conectar ao Trakt';
   }
 }
 
