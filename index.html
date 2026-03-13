@@ -582,7 +582,7 @@ async function loadAIRecs() {
   try {
     const res = await fetch('/api/claude',{
       method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,
+      body:JSON.stringify({model:'claude-opus-4-5',max_tokens:1000,
         system:'Especialista em cinema. Responda SOMENTE JSON sem markdown.\n{"recommendations":[{"title":"string","year":number,"genre":"string","score":number,"emoji":"string","aiReason":"1 frase em português","director":"string"}]}',
         messages:[{role:'user',content:`Assistidos no app: ${watched}. Watchlist: ${wl}. Histórico Trakt (reais): ${getTraktWatched().join(', ')||'nenhum'}. Gênero: ${activeGenre}. Trakt conectado: ${traktConnected}. Sugira 6 filmes personalizados e variados.`}]})
     });
@@ -759,7 +759,7 @@ async function doSearch(q) {
     results = [...movies, ...persons];
   } else {
     try {
-      const res = await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,system:'JSON ONLY: {"results":[{"title":"string","year":number,"genre":"string","score":number,"emoji":"string","type":"movie|person"}]}',messages:[{role:'user',content:`Busca: "${q}". 5 resultados.`}]})});
+      const res = await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-opus-4-5',max_tokens:600,system:'JSON ONLY: {"results":[{"title":"string","year":number,"genre":"string","score":number,"emoji":"string","type":"movie|person"}]}',messages:[{role:'user',content:`Busca: "${q}". 5 resultados.`}]})});
       const d = await res.json();
       results = JSON.parse(d.content[0].text.replace(/```json|```/g,'').trim()).results.map((r,i)=>({...r,id:200+i,color:gColor(r.genre)}));
     } catch {}
@@ -893,7 +893,7 @@ function movieModalHTML(m, cast, details, inWL) {
 async function loadMovieAI(m) {
   if (m.aiReason) { const el=document.getElementById('ai-detail'); if(el){el.textContent=m.aiReason;} return; }
   try {
-    const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:250,system:'Crítico de cinema. 2 frases em português por que amante de cinema de autor adoraria este filme.',messages:[{role:'user',content:`Analise: ${m.title} (${m.year})`}]})});
+    const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-opus-4-5',max_tokens:250,system:'Crítico de cinema. 2 frases em português por que amante de cinema de autor adoraria este filme.',messages:[{role:'user',content:`Analise: ${m.title} (${m.year})`}]})});
     const d=await res.json();
     const el=document.getElementById('ai-detail');
     if(el) el.textContent=d.content[0].text;
@@ -907,7 +907,7 @@ async function loadSimilar(m) {
     items=(d?.results||[]).slice(0,6).map((r,i)=>({id:300+i,tmdb_id:r.id,title:r.title,year:r.release_date?.slice(0,4),score:r.vote_average?.toFixed(1),poster_path:r.poster_path?TMDB_IMG+'w185'+r.poster_path:null,emoji:'🎬',color:'#0e0e1a'}));
   } else {
     try {
-      const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:400,system:'JSON ONLY: {"movies":[{"title":"string","year":number,"score":number,"emoji":"string","genre":"string"}]}',messages:[{role:'user',content:`5 similares a "${m.title}"`}]})});
+      const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-opus-4-5',max_tokens:400,system:'JSON ONLY: {"movies":[{"title":"string","year":number,"score":number,"emoji":"string","genre":"string"}]}',messages:[{role:'user',content:`5 similares a "${m.title}"`}]})});
       const d=await res.json();
       items=JSON.parse(d.content[0].text.replace(/```json|```/g,'').trim()).movies.map((x,i)=>({...x,id:300+i,color:gColor(x.genre)}));
     } catch {}
@@ -1014,12 +1014,12 @@ function personModalHTML(p, name, films, aiText) {
 
 async function loadPersonAI(p, name) {
   try {
-    const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:300,system:'Crítico de cinema. 2 frases em português por que amante de cinema de autor gostaria do trabalho desta pessoa.',messages:[{role:'user',content:`Perfil: ${name}`}]})});
+    const res=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-opus-4-5',max_tokens:300,system:'Crítico de cinema. 2 frases em português por que amante de cinema de autor gostaria do trabalho desta pessoa.',messages:[{role:'user',content:`Perfil: ${name}`}]})});
     const d=await res.json();
     const el=document.getElementById('person-ai');
     if(el) el.textContent=d.content[0].text;
     if(!tmdbKey){
-      const res2=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:400,system:'JSON ONLY: {"films":[{"title":"string","year":number,"score":number,"emoji":"string","genre":"string"}]}',messages:[{role:'user',content:`5 melhores filmes de ${name}`}]})});
+      const res2=await fetch('/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-opus-4-5',max_tokens:400,system:'JSON ONLY: {"films":[{"title":"string","year":number,"score":number,"emoji":"string","genre":"string"}]}',messages:[{role:'user',content:`5 melhores filmes de ${name}`}]})});
       const d2=await res2.json();
       const fl=JSON.parse(d2.content[0].text.replace(/```json|```/g,'').trim()).films.map((f,i)=>({...f,id:500+i,color:gColor(f.genre)}));
       const el2=document.getElementById('person-films-ai');
